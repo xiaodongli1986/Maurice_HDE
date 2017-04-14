@@ -2,11 +2,12 @@
 
     implicit none
 
-        INTEGER,  PARAMETER		:: de_num_intpl = 10650
+
+        INTEGER,  PARAMETER		:: de_num_intpl = 11650
 	DOUBLE PRECISION,  PARAMETER	:: de_basenumber = 1.0d0 + 1.0d0/512.0d0
 	!DOUBLE PRECISION,  PARAMETER	:: de_basenumber = 1.0d0 + 1.0d0/128.0d0
 	DOUBLE PRECISION,  PARAMETER	:: de_logbasenumber = log(de_basenumber)
-	DOUBLE PRECISION :: de_maxintplz
+	DOUBLE PRECISION :: de_maxintplz, de_minintpla
 	! Array for redshift.
 	DOUBLE PRECISION :: de_zdata(de_num_intpl)
 	! Array for ez, defined as H(z)/H(0)
@@ -19,7 +20,7 @@
 
 	TYPE :: de_para
 		!common parameter parameters for most models
-		DOUBLE PRECISION :: Om0, Or0, h
+		DOUBLE PRECISION :: Om0, Or0, h, Ode0
 		DOUBLE PRECISION :: Ok0 = 0.0
 	END TYPE de_para
 	!Global colleection of parameters
@@ -75,6 +76,7 @@
 		ENDDO
 		!Range of the interpolation (maximal redshift)
 		de_maxintplz = de_zdata(de_num_intpl)
+		de_minintpla = 1.0d0/(de_maxintplz +1.0d0)
 		WRITE(*,*) " Maximal redshift in interpolating = ", de_maxintplz
 		de_tools_inited = .TRUE.
 	END SUBROUTINE de_tools_init
@@ -101,6 +103,26 @@
 		f1 = de_ezdata(i1); f2 = de_ezdata(i2); f3 = de_ezdata(i3)
 		de_get_ez = de_intpl_vl(z, z1, f1, z2, f2, z3, f3)
 	END FUNCTION de_get_ez
+  !------------------------------------------
+  ! get the value of rho_de(z)/rho_de(z=0) 
+  !  for maurice hde
+  !------------------------------------------	
+       DOUBLE PRECISION FUNCTION de_get_rhoz(inputa)
+       		DOUBLE PRECISION, intent(in) :: inputa
+       		DOUBLE PRECISION :: ez, z, a, ezsq, desq, othersq
+       		if(inputa .le. de_minintpla) then
+       			a = de_minintpla
+       		else
+       			a = inputa
+       		endif
+       		z = 1.0/a - 1.d0
+       		ez = de_get_ez(z)
+       		othersq = de_CP%Om0 * a**(-3.0d0) + de_CP%Or0 * a**(-4.0d0)+ de_CP%Ok0 * a**(-2.0d0)
+       		desq = ez**2.0 - othersq
+       		de_get_rhoz = desq/(1.0-de_CP%Om0-de_CP%Or0-de_CP%Ok0) !de_CP%Ode0
+!       		de_get_rhoz = de_get_rhoz * (de_minintpla/inputa)**3.0
+       END FUNCTION de_get_rhoz
+       		
 
 !########################################################################
 !########################################################################
@@ -112,7 +134,7 @@
 		!de_mauricehde_dezda = ez/a - 3.0d0/(a*ez) * (de_CP%Om0 * a**(-3.0d0) )
 		!de_mauricehde_dezda = ez/a - 3.0d0/(a*ez) * (de_CP%Om0 * a**(-3.0d0) + de_CP%Or0 * a**(-4.0d0) * 2.0d0)
 		de_mauricehde_dezda = ez/a - 3.0d0/(a*ez) * (de_CP%Om0 * a**(-3.0d0) + de_CP%Or0 * a**(-4.0d0) )
-		!de_mauricehde_dezda =  - 1.5d0*de_CP%Om0 / a**(4.0d0) / ez - 2.0d0*de_CP%Or0 / a**(5.0d0) / ez 
+		!de_mauricehde_dezda =  - 1.5d0*de_CP%Om0 / a**(4.0d0) / ez - 2.0d0*de_CP%Or0 / a**(5.0d0) / ez !LCDM
 	END FUNCTION de_mauricehde_dezda
 	DOUBLE PRECISION FUNCTION de_mauricehde_q(a,ez)
 		DOUBLE PRECISION :: a,ez,dezda
@@ -164,6 +186,7 @@
 
 
     module LambdaGeneral
+    use Mauricehde
     use precision
     implicit none
 
@@ -174,7 +197,7 @@
 
     real(dl), parameter :: wa_ppf = 0._dl !Not used here, just for compatibility with e.g. halofit
 
-    logical :: w_perturb = .true.
+    logical :: w_perturb = .false.
     !If you are tempted to set this = .false. read
     ! http://cosmocoffee.info/viewtopic.php?t=811
     ! http://cosmocoffee.info/viewtopic.php?t=512
@@ -205,9 +228,49 @@
 
 
     subroutine init_background
+    use ModelParams
+    use Mauricehde
+    real(dl) :: Og0,z
+    integer :: i
     !This is only called once per model, and is a good point to do any extra initialization.
     !It is called before first call to dtauda, but after
     !massive neutrinos are initialized and after GetOmegak
+    ! Begin MauriceHDE Modification
+      de_CP%h   = CP%H0/100._dl
+      de_CP%Om0 = CP%omegab+CP%omegac!+CP%omegan
+      Og0	= 2.469d-5 / de_CP%h**2
+      de_CP%Or0 = Og0 * (1.0d0 + 0.2271d0 * 3.04d0)!!*0.9
+      de_CP%Ode0= CP%omegav
+      print *, 'CP%omegan = ', CP%omegan
+      print *, 'de_CP%Om0+de_CP%Or0+de_CP%Ode0 = ', de_CP%Om0+de_CP%Or0+de_CP%Ode0
+      call de_tools_init()
+      call de_mauricehde_init()
+!!! Test: value of rho(z)/rho(0) not sensitive to ratio of radiation
+
+!!! Standard outputs:
+! logz =            0 ; rho(z)/rho(0)=   0.970831867451036     
+! logz =            1 ; rho(z)/rho(0)=    123.720035900153     
+! logz =            2 ; rho(z)/rho(0)=    95763.4386004600     
+! logz =            3 ; rho(z)/rho(0)=    93226169.9602873     
+! logz =            4 ; rho(z)/rho(0)=    92974936765.9477     
+! logz =            5 ; rho(z)/rho(0)=    92949838812120.1     
+! logz =            6 ; rho(z)/rho(0)=   9.294733448195294E+016
+!!! down-scale Or0 by 10%:
+! logz =            0 ; rho(z)/rho(0)=   0.970835272446952     
+! logz =            1 ; rho(z)/rho(0)=    123.720036012737     
+! logz =            2 ; rho(z)/rho(0)=    95763.4386012083     
+! logz =            3 ; rho(z)/rho(0)=    93226169.9630668     
+! logz =            4 ; rho(z)/rho(0)=    92974936762.7349     
+! logz =            5 ; rho(z)/rho(0)=    92949838753650.3     
+! logz =            6 ; rho(z)/rho(0)=   9.294733389658818E+016
+
+      print *, 'z = ', 0, '; rho(z)/rho(0)= ',de_get_rhoz(1.0d0)
+      do i = -5, 5
+        z = 1.5**i
+        a = 1.0/(1.0+z)
+        print *, 'z = ', z, '; rho(z)/rho(0)= ',de_get_rhoz(a+0.0d0)
+       enddo
+   ! End MauriceHDE Modification      
     end  subroutine init_background
 
 
@@ -218,6 +281,7 @@
     use ModelParams
     use MassiveNu
     use LambdaGeneral
+    use Mauricehde !Mauricehde
     implicit none
     real(dl) dtauda
     real(dl), intent(IN) :: a
@@ -228,11 +292,13 @@
 
     !  8*pi*G*rho*a**4.
     grhoa2=grhok*a2+(grhoc+grhob)*a+grhog+grhornomass
-    if (w_lam == -1._dl) then
-        grhoa2=grhoa2+grhov*a2**2
-    else
-        grhoa2=grhoa2+grhov*a**(1-3*w_lam)
-    end if
+    ! Begin Mauricehde
+    !if (w_lam == -1._dl) then
+    !    grhoa2=grhoa2+grhov*a2**2
+    !else
+    !    grhoa2=grhoa2+grhov*a**(1-3*w_lam)
+    !end if
+    grhoa2=grhoa2+grhov*de_get_rhoz(dble(a))*a2**2
     if (CP%Num_Nu_massive /= 0) then
         !Get massive neutrino density relative to massless
         do nu_i = 1, CP%nu_mass_eigenstates
@@ -1377,9 +1443,11 @@
     grhoc_t=grhoc/a
     grhor_t=grhornomass/a2
     grhog_t=grhog/a2
-    grhov_t=grhov*a**(-1-3*w_lam)
+!    grhov_t=grhov*a**(-1-3*w_lam)
+    grhov_t=grhov*de_get_rhoz(a)*a2!Mauricehde
     grho=grhob_t+grhoc_t+grhor_t+grhog_t+grhov_t
-    gpres=(grhog_t+grhor_t)/3+grhov_t*w_lam
+!    gpres=(grhog_t+grhor_t)/3+grhov_t*w_lam
+    gpres=(grhog_t+grhor_t)/3!Mauricehde
 
     !  8*pi*a*a*SUM[rho_i*clx_i] add radiation later
     dgrho=grhob_t*clxb+grhoc_t*clxc
@@ -2116,11 +2184,14 @@
     grhoc_t=grhoc/a
     grhor_t=grhornomass/a2
     grhog_t=grhog/a2
-    if (w_lam==-1._dl) then
-        grhov_t=grhov*a2
-    else
-        grhov_t=grhov*a**(-1-3*w_lam)
-    end if
+    !Begin Mauricehde
+    grhov_t=grhov*de_get_rhoz(a)*a2
+!    if (w_lam==-1._dl) then
+!        grhov_t=grhov*a2
+!    else
+!        grhov_t=grhov*a**(-1-3*w_lam)
+!    end if
+    !End Mauricehde
 
     !  Get sound speed and ionisation fraction.
     if (EV%TightCoupling) then
@@ -2265,7 +2336,8 @@
 
     if (EV%TightCoupling) then
         !  ddota/a
-        gpres=gpres+ (grhog_t+grhor_t)/3 +grhov_t*w_lam
+        !gpres=gpres+ (grhog_t+grhor_t)/3 +grhov_t*w_lam
+        gpres=gpres+ (grhog_t+grhor_t)/3 !Mauricehde
         adotdota=(adotoa*adotoa-gpres)/2
 
         pig = 32._dl/45/opacity*k*(sigma+vb)
@@ -2518,10 +2590,11 @@
     grhoc_t=grhoc/a
     grhor_t=grhornomass/a2
     grhog_t=grhog/a2
-    grhov_t=grhov*a**(-1-3*w_lam)
+    !grhov_t=grhov*a**(-1-3*w_lam)
+    grhov_t=grhov*de_get_rhoz(a)*a2!Mauricehde
 
     grho=grhob_t+grhoc_t+grhor_t+grhog_t+grhov_t
-    gpres=(grhog_t+grhor_t)/3._dl+grhov_t*w_lam
+    gpres=(grhog_t+grhor_t)/3._dl!+grhov_t*w_lam Mauricehde
 
     adotoa=sqrt(grho/3._dl)
     adotdota=(adotoa*adotoa-gpres)/2
@@ -2672,11 +2745,12 @@
     grhoc_t=grhoc/a
     grhor_t=grhornomass/a2
     grhog_t=grhog/a2
-    if (w_lam==-1._dl) then
-        grhov_t=grhov*a2
-    else
-        grhov_t=grhov*a**(-1-3*w_lam)
-    end if
+!    if (w_lam==-1._dl) then
+!        grhov_t=grhov*a2
+!    else
+!        grhov_t=grhov*a**(-1-3*w_lam)
+!    end if
+    grhov_t=grhov*de_get_rhoz(a)*a2!Mauricehde
 
     grho=grhob_t+grhoc_t+grhor_t+grhog_t+grhov_t
 
