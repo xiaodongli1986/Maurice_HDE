@@ -33,8 +33,62 @@ contains
                 othersq = de_CP%Om0 * a**(-3.0d0) + de_CP%Or0 * a**(-4.0d0)+ de_CP%Ok0 * a**(-2.0d0)
                 desq = ez**2.0 - othersq
                 de_get_rhoz = desq/(1.0-de_CP%Om0-de_CP%Or0-de_CP%Ok0) !de_CP%Ode0
-!                       de_get_rhoz = de_get_rhoz * (de_minintpla/inputa)**3.0
        END FUNCTION de_get_rhoz
+  !------------------------------------------   
+       DOUBLE PRECISION FUNCTION de_mauricehde_get_Odez(inputa)
+                DOUBLE PRECISION, intent(in) :: inputa
+                DOUBLE PRECISION :: ez, z, a, ezsq, desq, othersq
+                if(inputa .le. de_minintpla) then
+                        a = de_minintpla
+                else
+                        a = inputa
+                endif
+                z = 1.0/a - 1.d0
+                ez = de_get_ez(z)
+                othersq = de_CP%Om0 * a**(-3.0d0) + de_CP%Or0 * a**(-4.0d0)+ de_CP%Ok0 * a**(-2.0d0)
+                desq = ez**2.0 - othersq
+                de_mauricehde_get_Odez = desq/ez**2.0 !de_CP%Ode0
+       END FUNCTION de_mauricehde_get_Odez
+  !------------------------------------------   
+       DOUBLE PRECISION FUNCTION de_mauricehde_get_Omz(inputa)
+                DOUBLE PRECISION, intent(in) :: inputa
+                DOUBLE PRECISION :: ez, z, a, ezsq, desq, othersq
+                if(inputa .le. de_minintpla) then
+                        a = de_minintpla
+                else
+                        a = inputa
+                endif
+                z = 1.0/a - 1.d0
+                ez = de_get_ez(z)
+                de_mauricehde_get_Omz = de_CP%Om0 * a**(-3.0d0)/ez**2.0 !de_CP%Ode0
+       END FUNCTION de_mauricehde_get_Omz
+  !------------------------------------------   
+       DOUBLE PRECISION FUNCTION de_mauricehde_get_Orz(inputa)
+                DOUBLE PRECISION, intent(in) :: inputa
+                DOUBLE PRECISION :: ez, z, a, ezsq, desq, othersq
+                if(inputa .le. de_minintpla) then
+                        a = de_minintpla
+                else
+                        a = inputa
+                endif
+                z = 1.0/a - 1.d0
+                ez = de_get_ez(z)
+                de_mauricehde_get_Orz = de_CP%Or0 * a**(-4.0d0)/ez**2.0 !de_CP%Ode0
+       END FUNCTION de_mauricehde_get_Orz
+  !------------------------------------------          
+       DOUBLE PRECISION FUNCTION de_mauricehde_weff(inputa, deltaa_to_a)
+       		DOUBLE PRECISION, intent(in) :: inputa
+       		DOUBLE PRECISION, intent(in), optional :: deltaa_to_a
+       		DOUBLE PRECISION :: da, a1,a2,dlnrho_to_dlna
+       		if (present(deltaa_to_a)) then
+       			da = deltaa_to_a * inputa
+       		else
+       			da = 1.0e-3 * inputa
+       		endif
+       		a1=max(0.0d0,dble(inputa-da)); a2=inputa+da;
+       		dlnrho_to_dlna = (log(de_get_rhoz(a2))-log(de_get_rhoz(a1))) / (log(a2)-log(a1))
+       		de_mauricehde_weff = -(1.d0/3.d0)*dlnrho_to_dlna - 1.d0
+       	END FUNCTION de_mauricehde_weff
 
 end module useful_tools
 
@@ -83,7 +137,7 @@ implicit none
 !	y = de_chisq_wmap7()
 !	y = de_chisq_planck()
 
-	open(unit=987,file='z_ez_qz__mauricehde.txt')
+	open(unit=987,file='z_ez_qz_Odez_Omz_Orz_RhodeToRhom_weff__mauricehde.txt')
 	write(987,*) trim(adjustl(tmpstr))
 	do iz = 1, de_num_intpl, 20
 		z=de_zi(iz)
@@ -94,7 +148,12 @@ implicit none
 !		q_ez_fun=(1-qz)*ez*ez
 !		H_residual=de_CP%Om0/a**3 + de_CP%Or0/a**4 + (1-qz)*ez*ez / 3.0 - ez*ez
 		!print *, 'z / h / q = ', real(z), real(ez), real(de_mauricehde_q(a,ez))
-		write(987,*)  real(z), real(ez), real(qz)!, real(q_ez_fun), real(H_residual)
+		write(987,'(8(e14.5))')  real(z), real(ez), real(qz), &
+		  real(de_mauricehde_get_Odez(a)), &
+		  real(de_mauricehde_get_Omz(a)), &
+		  real(de_mauricehde_get_Orz(a)), &
+		  real(de_mauricehde_get_Odez(a)/de_mauricehde_get_Omz(a)), &
+		  real(de_mauricehde_weff(a))!!
 	enddo
 	close(987)
 	
