@@ -103,7 +103,7 @@ implicit none
 	double precision :: y, y2
  	double precision :: omegam, z, a, ez, qz, q_ez_fun, H_residual
  	integer :: i, iz
- 	character(len=1000) :: tmpstr
+ 	character(len=1000) :: tmpstr,tmpstr1,tmpstr2
  
  	pr_chisq_info = .false.
  
@@ -115,10 +115,10 @@ implicit none
 	print *
 	print *
 	
-!        DO i = 1, 1
+        DO i = 0, 3
 	de_model_lab = de_mauricehde_lab
 	de_CP%Ob0hsq    =  0.02253
-	omegam 		=  0.30 !0.26+i*0.002!0.284936E+00
+	omegam 		=  0.2 + i*0.05 !0.26+i*0.002!0.284936E+00
 	!de_CP%h		=  0.711833E+00
 	de_CP%h		=  0.70
 	de_CP%alpha	=  0.142125E+01
@@ -129,6 +129,7 @@ implicit none
 	call de_init()
 	write(tmpstr,'(A,f4.2,A,f4.2,A,f10.8)') '### omegam = ', real(omegam), '; h = ', de_CP%h, &
 	  '; omega_radiaton = ', de_CP%Or0
+	write(tmpstr1,'(A,f4.2)') '_omegam', omegam
 
 !	y = de_chisq_g06(.false., .true.)
 !	y = de_chisq_jla()
@@ -137,7 +138,7 @@ implicit none
 !	y = de_chisq_wmap7()
 !	y = de_chisq_planck()
 
-	open(unit=987,file='z_ez_qz_Odez_Omz_Orz_RhodeToRhom_weff__mauricehde.txt')
+	open(unit=987,file='z_ez_qz_Odez_Omz_Orz_RhodeToRhom_weff__mauricehde.'//trim(adjustl(tmpstr1))//'.txt')
 	write(987,*) trim(adjustl(tmpstr))
 	do iz = 1, de_num_intpl, 20
 		z=de_zi(iz)
@@ -165,7 +166,7 @@ implicit none
 !	y2 = de_chisq_wmap7()
 !	y2 = de_chisq_planck()
 
-	open(unit=987,file='z_ez_qz__lcdm.txt')
+	open(unit=987,file='z_ez_qz__lcdm'//trim(adjustl(tmpstr1))//'.txt')
 	write(987,*) trim(adjustl(tmpstr))
 	do iz = 1, de_num_intpl, 20
 		z=de_zi(iz)
@@ -180,7 +181,7 @@ implicit none
 	close(987)
 
 !	print *, 'omegam /chisqs of HDE/LambdaCDM =', real(omegam), real(y), real(y2)
-!	ENDDO
+	ENDDO
 !	write(*,*) ""
 !	write(*,*) "====================================="
 !	write(*,*) "  Resut of Maurice's HDE:"
